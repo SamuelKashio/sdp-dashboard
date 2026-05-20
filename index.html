@@ -734,19 +734,19 @@ function renderPage1() {
 
   // Pie - tipo solicitud
   const tipoSol = groupBy(tk, 'requestType');
-  const topTipo = top(tipoSol, 6);
+  const topTipo = topN(tipoSol, 6);
   mkChart('ch-tipo-sol', 'pie', topTipo.map(e=>e[0]), [{
     data: topTipo.map(e=>e[1]), backgroundColor: COLORS
   }]);
 
   // Bar - empresa (horizontal)
-  const empresas = top(groupBy(tk, 'empresa'), 15);
+  const empresas = topN(groupBy(tk, 'empresa'), 15);
   mkChart('ch-empresa', 'bar', empresas.map(e=>e[0]), [{
     label: 'Tickets', data: empresas.map(e=>e[1]), backgroundColor: '#5B3F9E'
   }], { indexAxis: 'y', plugins: { legend: { display: false } } });
 
   // Donut - tipo empresa
-  const tiposE = top(groupBy(tk, 'tipoEmpresa'), 6);
+  const tiposE = topN(groupBy(tk, 'tipoEmpresa'), 6);
   mkChart('ch-tipo-empresa', 'doughnut', tiposE.map(e=>e[0]), [{
     data: tiposE.map(e=>e[1]), backgroundColor: COLORS
   }]);
