@@ -1,254 +1,107 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 const SDPDataMapper = require('./sdp-mapper');
 
 const app = express();
-app.use(cors());
 app.use(express.json());
-
-// Servir archivos estáticos desde la carpeta actual
 app.use(express.static(path.join(__dirname)));
 
-let mapper;
-let mapperInitialized = false;
+const mapper = new SDPDataMapper(
+  process.env.SDP_CLIENT_ID,
+  process.env.SDP_CLIENT_SECRET,
+  process.env.SDP_REFRESH_TOKEN,
+  process.env.SDP_SUBDOMAIN || 'soporte',
+  process.env.SDP_DOMAIN    || 'kashio.net',
+  process.env.SDP_PORTAL    || 'itdesk'
+);
 
-// ============ INICIALIZACIÓN ============
+// ===== ENDPOINTS =====
 
-async function initializeMapper() {
-  try {
-    console.log('🔄 Inicializando mapper...');
-    
-    mapper = new SDPDataMapper(
-      process.env.SDP_CLIENT_ID,
-      process.env.SDP_CLIENT_SECRET,
-      process.env.SDP_REFRESH_TOKEN,
-      "soporte",           // subdomain
-      "kashio.net",        // domain
-      "itdesk"             // portal_url
-    );
+app.get('/health', (req, res) => res.json({
+  status: 'OK', timestamp: new Date().toISOString(),
+  mapper: mapper.getAllTickets().length > 0 ? 'ready' : 'empty'
+}));
 
-    // Primera sincronización
-    console.log('📥 Obteniendo primeros tickets...');
-    await mapper.mapAllTickets();
-    mapper.generateSummary();
-    
-    mapperInitialized = true;
-    console.log(`✅ Mapper inicializado con ${mapper.mappedData.tickets.length} tickets`);
+app.get('/api/status', (req, res) => res.json({
+  totalTickets: mapper.getAllTickets().length,
+  yearsAvailable: mapper.getYearsAvailable(),
+  syncProgress: mapper.syncProgress,
+  lastIncrementalSync: mapper.cacheInfo[new Date().getFullYear()]?.syncedAt || null
+}));
 
-    // Auto-sync cada 15 minutos
-    const interval = parseInt(process.env.SYNC_INTERVAL) || 15;
-    mapper.startAutoSync(interval);
-    console.log(`🔄 Sincronización automática cada ${interval} minutos\n`);
+// Años disponibles en caché
+app.get('/api/years', (req, res) => res.json(mapper.getYearsAvailable()));
 
-    return true;
-  } catch (error) {
-    console.error('❌ Error inicializando mapper:', error.message);
-    return false;
-  }
-}
+// Exportar tickets (todos los años en caché)
+app.get('/api/export', (req, res) => res.json(mapper.exportForAnalysis()));
 
-// ============ RUTAS DASHBOARD ============
-
-// Servir el dashboard HTML
-app.get('/dashboard-realtime.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dashboard-realtime.html'));
+// Exportar solo un año específico
+app.get('/api/export/:year', (req, res) => {
+  const year = parseInt(req.params.year);
+  const tickets = mapper.cache[year] || [];
+  res.json({ year, total: tickets.length, tickets });
 });
 
-// Root redirige al dashboard
-app.get('/', (req, res) => {
-  res.redirect('/dashboard-realtime.html');
+// ===== SYNC ENDPOINTS =====
+
+// Progreso del sync en tiempo real
+app.get('/api/sync/progress', (req, res) => res.json(mapper.syncProgress));
+
+// Sync de un año específico
+app.post('/api/sync/year/:year', async (req, res) => {
+  const year = parseInt(req.params.year);
+  if (isNaN(year) || year < 2020 || year > 2030)
+    return res.status(400).json({ error: 'Año inválido' });
+
+  if (mapper.syncProgress.status === 'running')
+    return res.status(409).json({ error: `Sync en progreso: ${mapper.syncProgress.year}`, progress: mapper.syncProgress });
+
+  // Si ya está en caché completo, devolver inmediatamente
+  if (mapper.cache[year]?.length > 0 && mapper.cacheInfo[year]?.complete)
+    return res.json({ message: 'Ya en caché', year, total: mapper.cache[year].length, cached: true });
+
+  // Iniciar sync en background
+  res.json({ message: `Sync ${year} iniciado en background`, year });
+  mapper.syncYear(year).catch(e => console.error(`❌ Error sync ${year}:`, e.message));
 });
 
-// ============ RUTAS API ============
-
-// GET /api/status - Estado de conexión
-app.get('/api/status', (req, res) => {
-  res.json({
-    initialized: mapperInitialized,
-    ticketCount: mapper?.mappedData.tickets.length || 0,
-    lastUpdate: mapper?.mappedData.lastUpdate || null,
-    lastTokenRefresh: mapper?.lastRefreshTime || null
-  });
-});
-
-// GET /api/tickets - Obtener todos los tickets
-app.get('/api/tickets', (req, res) => {
-  if (!mapperInitialized) {
-    return res.status(503).json({ 
-      error: 'Mapper aún no inicializado',
-      message: 'Esperando primera sincronización...'
-    });
-  }
-
-  const { priority, status, overdue } = req.query;
-  const filters = {};
-
-  if (priority) filters.priority = priority;
-  if (status) filters.status = status;
-  if (overdue !== undefined) filters.overdue = overdue === 'true';
-
-  const result = mapper.getTicketsForAIAnalysis(filters);
-  res.json(result);
-});
-
-// GET /api/summary - Resumen estadístico
-app.get('/api/summary', (req, res) => {
-  if (!mapperInitialized) {
-    return res.status(503).json({ error: 'Mapper no inicializado' });
-  }
-
-  res.json({
-    summary: mapper.mappedData.summary,
-    lastUpdate: mapper.mappedData.lastUpdate,
-    totalTickets: mapper.mappedData.tickets.length
-  });
-});
-
-// POST /api/sync - Forzar sincronización manual
+// Sync incremental manual
 app.post('/api/sync', async (req, res) => {
-  if (!mapperInitialized) {
-    return res.status(503).json({ error: 'Mapper no inicializado' });
-  }
-
   try {
-    console.log('🔄 Sincronización manual solicitada...');
-    await mapper.mapAllTickets();
-    mapper.generateSummary();
-    
-    res.json({
-      success: true,
-      message: 'Sincronización completada',
-      ticketCount: mapper.mappedData.tickets.length,
-      lastUpdate: mapper.mappedData.lastUpdate
-    });
-    
-    console.log('✅ Sincronización completada');
-  } catch (error) {
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
-  }
+    await mapper.incrementalSync();
+    res.json({ success: true, totalTickets: mapper.getAllTickets().length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/export - Exportar datos en JSON (PARA DASHBOARD EN TIEMPO REAL)
-app.get('/api/export', (req, res) => {
-  if (!mapperInitialized) {
-    return res.status(503).json({ 
-      error: 'Mapper no inicializado',
-      message: 'Esperando primera sincronización...'
-    });
-  }
+// Token debug
+app.get('/api/token', (req, res) => res.json({ accessToken: mapper.accessToken }));
 
-  try {
-    const data = mapper.exportForAnalysis();
-    res.setHeader('Content-Type', 'application/json');
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ 
-      error: 'Error al exportar',
-      message: error.message 
-    });
-  }
-});
+// ===== 404 =====
+app.use((req, res) => res.status(404).json({ error: 'Endpoint no encontrado' }));
+app.use((err, req, res, next) => res.status(500).json({ error: err.message }));
 
-// GET /api/analyze/overdue - Tickets vencidos
-app.get('/api/analyze/overdue', (req, res) => {
-  if (!mapperInitialized) {
-    return res.status(503).json({ error: 'Mapper no inicializado' });
-  }
-
-  const overdueTickets = mapper.getTicketsForAIAnalysis({ overdue: true });
-  res.json({
-    ...overdueTickets,
-    urgency: 'CRÍTICA',
-    recommendation: 'Estos tickets requieren atención inmediata'
-  });
-});
-
-// GET /api/analyze/priority/:level - Tickets por prioridad
-app.get('/api/analyze/priority/:level', (req, res) => {
-  if (!mapperInitialized) {
-    return res.status(503).json({ error: 'Mapper no inicializado' });
-  }
-
-  const { level } = req.params;
-  const tickets = mapper.getTicketsForAIAnalysis({ priority: level });
-  res.json(tickets);
-});
-
-// GET /health - Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    mapper: mapperInitialized ? 'ready' : 'initializing'
-  });
-});
-
-// ============ MANEJO DE ERRORES ============
-
-app.use((err, req, res, next) => {
-  console.error('Error:', err.message);
-  res.status(500).json({ 
-    error: 'Internal Server Error',
-    message: err.message
-  });
-});
-
-// 404
-app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint no encontrado' });
-});
-
-// ============ INICIAR SERVIDOR ============
-
+// ===== INICIO =====
 const PORT = process.env.PORT || 3000;
+const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL || '15');
 
 app.listen(PORT, async () => {
   console.log('\n' + '='.repeat(60));
-  console.log('🚀 SERVIDOR INICIADO');
+  console.log('🚀 KASHIO SDP DASHBOARD V3 - Lazy Loading por Año');
   console.log('='.repeat(60));
-  console.log(`📍 URL: http://localhost:${PORT}`);
-  console.log(`🌐 Dashboard: http://localhost:${PORT}/dashboard-realtime.html`);
-  console.log('\n📊 ENDPOINTS DISPONIBLES:');
-  console.log(`   GET  /api/status              - Estado del mapper`);
-  console.log(`   GET  /api/tickets             - Lista de todos los tickets`);
-  console.log(`   GET  /api/summary             - Resumen estadístico`);
-  console.log(`   GET  /api/tickets?priority=High - Filtrar por prioridad`);
-  console.log(`   POST /api/sync                - Sincronizar manualmente`);
-  console.log(`   GET  /api/export              - Descargar datos como JSON`);
-  console.log(`   GET  /api/analyze/overdue     - Tickets vencidos`);
-  console.log(`   GET  /api/analyze/priority/:level - Por prioridad`);
-  console.log(`   GET  /health                  - Health check`);
-  console.log('\n' + '='.repeat(60));
-  console.log('⏳ INICIALIZANDO MAPPER...\n');
-  
-  // Inicializar mapper
-  const success = await initializeMapper();
-  
-  if (!success) {
-    console.error('\n⚠️  ADVERTENCIA: El mapper no se pudo inicializar');
-    console.error('Verifica:');
-    console.error('  1. El archivo .env existe y tiene valores correctos');
-    console.error('  2. Tu CLIENT_ID y CLIENT_SECRET son válidos');
-    console.error('  3. Tu REFRESH_TOKEN no ha expirado (válido 6 meses)');
-    console.error('  4. Tienes acceso a Service Desk Plus API\n');
-    console.error('El servidor seguirá corriendo, pero /api/tickets devolverá error.\n');
-  }
-  
+  console.log(`📍 http://localhost:${PORT}`);
+  console.log('\n📡 ENDPOINTS:');
+  console.log('  GET  /api/export            - Todos los tickets en caché');
+  console.log('  GET  /api/export/:year      - Tickets de un año');
+  console.log('  GET  /api/years             - Años disponibles en caché');
+  console.log('  GET  /api/status            - Estado del servidor');
+  console.log('  GET  /api/sync/progress     - Progreso del sync actual');
+  console.log('  POST /api/sync/year/:year   - Sync de un año específico');
+  console.log('  POST /api/sync              - Sync incremental');
   console.log('='.repeat(60) + '\n');
-});
 
-// Manejo de interrupciones
-process.on('SIGINT', () => {
-  console.log('\n\n👋 Servidor detenido');
-  process.exit(0);
-});
+  await mapper.initialSync();
 
-process.on('SIGTERM', () => {
-  console.log('\n\n👋 Servidor detenido');
-  process.exit(0);
+  setInterval(() => mapper.incrementalSync(), SYNC_INTERVAL * 60 * 1000);
+  console.log(`🔄 Auto-sync incremental cada ${SYNC_INTERVAL} minutos\n`);
 });
