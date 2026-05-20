@@ -621,7 +621,7 @@ function groupBy(arr, key) {
   }, {});
 }
 
-function top(obj, n=10) {
+function topN(obj, n=10) {
   return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n);
 }
 
