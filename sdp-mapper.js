@@ -84,9 +84,7 @@ class SDPDataMapper {
   }
 
   /**
-   * Obtiene todos los tickets
-   * MÉTODO: GET
-   * PARÁMETRO: input_data como query string
+    * Obtiene todos los tickets CON udf_fields (consultando cada uno individualmente)
    */
   async fetchAllTickets() {
     try {
@@ -94,7 +92,7 @@ class SDPDataMapper {
       
       const token = await this.getValidToken();
       
-      // Construir input_data como JSON string
+      // 1️⃣ Primero: Obtén lista de IDs
       const inputData = JSON.stringify({
         "list_info": {
           "start_index": 1,
@@ -104,41 +102,57 @@ class SDPDataMapper {
         }
       });
 
-      // URL con parámetro input_data
-      const url = `${this.apiBase}/requests?input_data=${encodeURIComponent(inputData)}`;
+      const listUrl = `${this.apiBase}/requests?input_data=${encodeURIComponent(inputData)}`;
       
-      console.log(`📡 GET /requests`);
-      console.log(`   URL: ${url.substring(0, 100)}...`);
+      console.log(`📡 GET /requests (lista)`);
 
-      const response = await fetch(url, {
+      const listResponse = await fetch(listUrl, {
         method: "GET",
         headers: {
           "Authorization": `Zoho-oauthtoken ${token}`,
-          "Accept": "application/vnd.manageengine.sdp.v3+json",
-          "Content-Type": "application/x-www-form-urlencoded"
+          "Accept": "application/vnd.manageengine.sdp.v3+json"
         }
       });
 
-      let data;
-      try {
-        data = await response.json();
-      } catch (parseError) {
-        console.error('Raw response:', await response.text());
-        throw new Error(`No se pudo parsear respuesta JSON`);
+      let listData = await listResponse.json();
+
+      if (!listData.requests || listData.requests.length === 0) {
+        console.log("⚠️ No hay tickets");
+        return [];
       }
 
-      if (!response.ok) {
-        console.error('Error response:', JSON.stringify(data, null, 2));
-        throw new Error(`HTTP ${response.status}: ${data.response_status?.messages?.[0]?.message || JSON.stringify(data)}`);
+      console.log(`✅ ${listData.requests.length} tickets obtenidos de lista`);
+
+      // 2️⃣ Ahora: Consulta CADA uno individualmente para obtener udf_fields
+      console.log(`📥 Obteniendo detalles completos de cada ticket (con udf_fields)...`);
+      
+      const fullTickets = [];
+      
+      for (const ticket of listData.requests) {
+        try {
+          const detailUrl = `${this.apiBase}/requests/${ticket.id}`;
+          
+          const detailResponse = await fetch(detailUrl, {
+            method: "GET",
+            headers: {
+              "Authorization": `Zoho-oauthtoken ${token}`,
+              "Accept": "application/vnd.manageengine.sdp.v3+json"
+            }
+          });
+
+          const detailData = await detailResponse.json();
+          
+          if (detailData.request) {
+            fullTickets.push(detailData.request);
+          }
+        } catch (error) {
+          console.warn(`⚠️ Error obteniendo detalles de ticket ${ticket.id}:`, error.message);
+          // Continuar con el siguiente ticket
+        }
       }
 
-      if (!data.requests) {
-        throw new Error(`Respuesta inesperada - no contiene 'requests': ${JSON.stringify(data)}`);
-      }
-
-      console.log(`✅ Respuesta recibida: ${response.status}`);
-      console.log(`✅ ${data.requests.length} tickets obtenidos`);
-      return data.requests;
+      console.log(`✅ ${fullTickets.length} tickets con detalles completos obtenidos`);
+      return fullTickets;
     } catch (error) {
       console.error("❌ Error obteniendo tickets:", error.message);
       throw error;
@@ -251,7 +265,42 @@ class SDPDataMapper {
       hasChangeInitiatedRequest: rawTicket.has_change_initiated_request || false,
       hasRequestInitiatedChange: rawTicket.has_request_initiated_change || false,
       hasDraft: rawTicket.has_draft || false,
-      hasPurchaseOrders: rawTicket.has_purchase_orders || false
+      hasPurchaseOrders: rawTicket.has_purchase_orders || false,
+
+      // ============ CAMPOS PERSONALIZADOS (udf_fields) - MAPEO OFICIAL KASHIO ============
+      // Extraer de udf_fields según la tabla oficial de campos de la ticketera
+      
+      // Información de la empresa
+      empresa: rawTicket.udf_fields?.udf_char2 || null,                    // Clientes de Kashio
+      tipoEmpresa: rawTicket.udf_fields?.udf_char6 || null,               // Tipo de Empresa
+      
+      // Información de contacto
+      emailIdCustom: rawTicket.udf_fields?.udf_char1 || null,             // Email id
+      
+      // Clasificación y módulos
+      modulo: rawTicket.udf_fields?.udf_char5 || null,                    // Módulo
+      erp: rawTicket.udf_fields?.udf_char10 || null,                      // ERP (Administradora)
+      region: rawTicket.udf_fields?.udf_char15 || null,                   // Región
+      
+      // Motivos y estados
+      motivoPendiente: rawTicket.udf_fields?.udf_char3 || null,           // Motivo de Pendiente
+      motivoCancelacion: rawTicket.udf_fields?.udf_char4 || null,         // Motivo de Cancelación
+      
+      // Flags de negocio y horario
+      afectaNegocio: rawTicket.udf_fields?.udf_char7 || null,             // Afecta a Negocio
+      dentroHorarioOficina: rawTicket.udf_fields?.udf_char8 || null,      // Dentro de Horario de Oficina
+      horarioMadrugada: rawTicket.udf_fields?.udf_char9 || null,          // Horario de madrugada
+      
+      // Clasificación corporativa
+      corporativo: rawTicket.udf_fields?.udf_char11 || null,              // Corporativo
+      solicitante: rawTicket.udf_fields?.udf_char12 || null,              // Solicitante
+      informativo: rawTicket.udf_fields?.udf_char13 || null,              // Informativo
+      
+      // Fechas y textos adicionales
+      fechaComprometida: rawTicket.udf_fields?.udf_date1?.value || null,  // Fecha comprometida
+      jiraGenerado: rawTicket.udf_fields?.txt_jira_generado || null,      // Jira Generado
+      comentarios: rawTicket.udf_fields?.txt_comentarios || null,         // Comentarios
+      solicitudAsociada: rawTicket.udf_fields?.txt_solicitud_asociada || null, // Solicitud asociada
     };
   }
 
