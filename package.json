@@ -1,0 +1,31 @@
+{
+  "name": "sdp-dashboard-realtime",
+  "version": "1.0.0",
+  "description": "Dashboard en tiempo real para Service Desk Plus - Kashio",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node test-credentials.js",
+    "check": "node check-files.js",
+    "sync": "node server.js"
+  },
+  "keywords": [
+    "service-desk-plus",
+    "dashboard",
+    "realtime",
+    "kashio"
+  ],
+  "author": "SDP Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

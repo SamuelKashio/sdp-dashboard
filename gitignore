@@ -1,0 +1,38 @@
+# No subir a GitHub
+
+# Variables de entorno
+.env
+.env.local
+.env.*.local
+
+# Node modules
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Temporal
+*.tmp
+.cache/
+
+# Dependencias locales
+package-lock.json
+yarn.lock
+
+# Archivos del sistema
+.DS_Store
+*.swp
+*~

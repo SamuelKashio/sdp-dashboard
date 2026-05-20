@@ -1,0 +1,28 @@
+# Configuración de Netlify
+# Este archivo hace que Netlify sepa cómo desplegar tu dashboard
+
+[build]
+  # No hay build requerido - solo sirve archivos estáticos
+  command = ""
+  publish = "."
+
+# Redireccionar todas las llamadas a API al servidor en Render
+[[redirects]]
+  from = "/api/*"
+  to = "https://sdp-server.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/health"
+  to = "https://sdp-server.onrender.com/health"
+  status = 200
+  force = true
+
+# Headers para CORS
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type"

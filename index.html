@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Service Desk Plus - Kashio</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1f2937;
+            --light: #f9fafb;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            color: var(--primary);
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #6b7280;
+        }
+
+        .server-info {
+            background: #f3f4f6;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #374151;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            margin-top: 15px;
+        }
+
+        .status.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status.loading {
+            background: #fef3c7;
+            color: #78350f;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, var(--primary), #1e40af);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-card.success {
+            background: linear-gradient(135deg, var(--success), #059669);
+        }
+
+        .stat-card.warning {
+            background: linear-gradient(135deg, var(--warning), #d97706);
+        }
+
+        .stat-card.danger {
+            background: linear-gradient(135deg, var(--danger), #dc2626);
+        }
+
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .chart-card h3 {
+            color: var(--primary);
+            margin-bottom: 15px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .controls button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            background: var(--primary);
+            color: white;
+            transition: all 0.3s;
+        }
+
+        .controls button:hover {
+            background: #1d4ed8;
+            transform: translateY(-2px);
+        }
+
+        .table-container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: var(--light);
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        tr:hover {
+            background: #f9fafb;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .badge-nuevo { background: #dbeafe; color: #0c4a6e; }
+        .badge-asignado { background: #d1fae5; color: #065f46; }
+        .badge-en-curso { background: #fef3c7; color: #78350f; }
+        .badge-resuelto { background: #e5e7eb; color: #374151; }
+        .badge-invalido { background: #fee2e2; color: #991b1b; }
+        .badge-pendiente { background: #ddd6fe; color: #4c1d95; }
+        .badge-cerrado { background: #d1d5db; color: #1f2937; }
+
+        .overdue {
+            color: var(--danger);
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            .stat-number {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Dashboard Service Desk Plus - Kashio</h1>
+            <p>Sincronización en tiempo real</p>
+            <div class="server-info" id="serverInfo">🔍 Detectando servidor...</div>
+            <div class="status loading" id="status">⏳ Cargando datos...</div>
+            <div id="lastUpdate" style="margin-top: 10px; color: #6b7280; font-size: 0.9em;"></div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalTickets">0</div>
+                    <div class="stat-label">Total Tickets</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-number" id="resolvedCount">0</div>
+                    <div class="stat-label">Resueltos</div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="stat-number" id="pendingCount">0</div>
+                    <div class="stat-label">Pendientes</div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="stat-number" id="overdueCount">0</div>
+                    <div class="stat-label">Vencidos</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="syncData()">🔄 Sincronizar Ahora</button>
+            <button onclick="exportToJSON()">💾 Descargar JSON</button>
+            <button onclick="exportToCSV()">📋 Descargar CSV</button>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>📈 Por Estado</h3>
+                <div class="chart-container">
+                    <canvas id="statusChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>👥 Top 10 Técnicos</h3>
+                <div class="chart-container">
+                    <canvas id="assigneeChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>⚠️ Vencidos por Estado</h3>
+                <div class="chart-container">
+                    <canvas id="overdueChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>📋 Top 10 Solicitantes</h3>
+                <div class="chart-container">
+                    <canvas id="requesterChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <h3 style="margin-bottom: 20px;">📋 Últimos 20 Tickets</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Asunto</th>
+                        <th>Estado</th>
+                        <th>Solicitante</th>
+                        <th>Asignado</th>
+                        <th>Creado</th>
+                        <th>Vencido</th>
+                    </tr>
+                </thead>
+                <tbody id="ticketsTable">
+                    <tr><td colspan="7" style="text-align: center; padding: 20px;">Cargando...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let allTickets = [];
+        let charts = {};
+        let serverUrl = '';
+
+        // Detectar servidor automáticamente
+        function getServerUrl() {
+            // Si está en Netlify (dominio netlify.app), usar el servidor en Render
+            if (window.location.hostname.includes('netlify.app')) {
+                return 'https://sdp-server.onrender.com';
+            }
+            // Si está en localhost, usar localhost
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                return 'http://localhost:3000';
+            }
+            // Default: usar desde mismo origen (proxy via netlify.toml)
+            return window.location.origin;
+        }
+
+        function updateServerInfo() {
+            serverUrl = getServerUrl();
+            const info = document.getElementById('serverInfo');
+            
+            if (window.location.hostname.includes('netlify.app')) {
+                info.innerHTML = '☁️ Ejecutándose en: <strong>Netlify + Render</strong>';
+            } else if (window.location.hostname === 'localhost') {
+                info.innerHTML = '💻 Ejecutándose en: <strong>Local (localhost:3000)</strong>';
+            } else {
+                info.innerHTML = '🌐 Ejecutándose en: <strong>' + window.location.hostname + '</strong>';
+            }
+        }
+
+        async function syncData() {
+            try {
+                updateStatus('loading', '⏳ Sincronizando...');
+                
+                const url = serverUrl + '/api/export';
+                console.log('Conectando a:', url);
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                allTickets = data.tickets || [];
+                
+                if (allTickets.length === 0) {
+                    updateStatus('error', '❌ Sin datos');
+                    return;
+                }
+
+                updateStatistics();
+                renderCharts();
+                renderTable();
+                updateStatus('success', `✅ ${allTickets.length} tickets cargados`);
+                document.getElementById('lastUpdate').textContent = `Última actualización: ${new Date().toLocaleTimeString('es-ES')}`;
+
+            } catch (error) {
+                console.error('Error:', error);
+                updateStatus('error', `❌ Error: ${error.message}`);
+            }
+        }
+
+        function updateStatus(type, message) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = `status ${type}`;
+            statusEl.textContent = message;
+        }
+
+        function updateStatistics() {
+            const total = allTickets.length;
+            const resolved = allTickets.filter(t => t.status === 'Resuelto').length;
+            const pending = allTickets.filter(t => ['Nuevo', 'En curso', 'Asignado'].includes(t.status)).length;
+            const overdue = allTickets.filter(t => t.overdue).length;
+
+            document.getElementById('totalTickets').textContent = total;
+            document.getElementById('resolvedCount').textContent = resolved;
+            document.getElementById('pendingCount').textContent = pending;
+            document.getElementById('overdueCount').textContent = overdue;
+        }
+
+        function renderCharts() {
+            // Status Chart
+            const statusData = {};
+            allTickets.forEach(t => {
+                statusData[t.status] = (statusData[t.status] || 0) + 1;
+            });
+
+            if (charts.status) charts.status.destroy();
+            const statusCtx = document.getElementById('statusChart').getContext('2d');
+            charts.status = new Chart(statusCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(statusData),
+                    datasets: [{
+                        data: Object.values(statusData),
+                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+
+            // Assignee Chart
+            const assigneeData = {};
+            allTickets.filter(t => t.assignedTo).forEach(t => {
+                assigneeData[t.assignedTo] = (assigneeData[t.assignedTo] || 0) + 1;
+            });
+            const topAssignees = Object.entries(assigneeData).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+            if (charts.assignee) charts.assignee.destroy();
+            const assigneeCtx = document.getElementById('assigneeChart').getContext('2d');
+            charts.assignee = new Chart(assigneeCtx, {
+                type: 'bar',
+                data: {
+                    labels: topAssignees.map(a => a[0]),
+                    datasets: [{
+                        label: 'Tickets',
+                        data: topAssignees.map(a => a[1]),
+                        backgroundColor: '#3b82f6'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            // Overdue Chart
+            const overdueByStatus = {};
+            allTickets.filter(t => t.overdue).forEach(t => {
+                overdueByStatus[t.status] = (overdueByStatus[t.status] || 0) + 1;
+            });
+
+            if (charts.overdue) charts.overdue.destroy();
+            const overdueCtx = document.getElementById('overdueChart').getContext('2d');
+            charts.overdue = new Chart(overdueCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(overdueByStatus),
+                    datasets: [{
+                        label: 'Vencidos',
+                        data: Object.values(overdueByStatus),
+                        backgroundColor: '#ef4444'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            // Requester Chart
+            const requesterData = {};
+            allTickets.forEach(t => {
+                requesterData[t.requestor] = (requesterData[t.requestor] || 0) + 1;
+            });
+            const topRequesters = Object.entries(requesterData).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+            if (charts.requester) charts.requester.destroy();
+            const requesterCtx = document.getElementById('requesterChart').getContext('2d');
+            charts.requester = new Chart(requesterCtx, {
+                type: 'bar',
+                data: {
+                    labels: topRequesters.map(r => r[0]),
+                    datasets: [{
+                        label: 'Tickets',
+                        data: topRequesters.map(r => r[1]),
+                        backgroundColor: '#06b6d4'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('ticketsTable');
+            tbody.innerHTML = '';
+
+            allTickets.slice(0, 20).forEach(ticket => {
+                const createdDate = new Date(parseInt(ticket.createdTime)).toLocaleDateString('es-ES');
+                const dueDate = ticket.dueDate ? new Date(parseInt(ticket.dueDate)).toLocaleDateString('es-ES') : '-';
+                
+                const statusClass = {
+                    'Nuevo': 'badge-nuevo',
+                    'Asignado': 'badge-asignado',
+                    'En curso': 'badge-en-curso',
+                    'Resuelto': 'badge-resuelto',
+                    'Inválido': 'badge-invalido',
+                    'Pendiente en Cliente': 'badge-pendiente',
+                    'Cerrado': 'badge-cerrado'
+                }[ticket.status] || 'badge-nuevo';
+
+                const row = `
+                    <tr>
+                        <td><strong>${ticket.displayId}</strong></td>
+                        <td>${ticket.subject.substring(0, 50)}</td>
+                        <td><span class="badge ${statusClass}">${ticket.status}</span></td>
+                        <td>${ticket.requestor}</td>
+                        <td>${ticket.assignedTo || '-'}</td>
+                        <td>${createdDate}</td>
+                        <td>${ticket.overdue ? '<span class="overdue">⚠️ VENCIDO</span>' : '✓'}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+
+        function exportToJSON() {
+            const data = {
+                exportDate: new Date().toISOString(),
+                totalTickets: allTickets.length,
+                tickets: allTickets
+            };
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `tickets-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+        }
+
+        function exportToCSV() {
+            let csv = 'ID,Asunto,Estado,Solicitante,Asignado,Creado,Vencido\n';
+            allTickets.forEach(t => {
+                const createdDate = new Date(parseInt(t.createdTime)).toLocaleDateString('es-ES');
+                csv += `"${t.displayId}","${t.subject}","${t.status}","${t.requestor}","${t.assignedTo || '-'}","${createdDate}","${t.overdue ? 'Sí' : 'No'}"\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `tickets-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+        }
+
+        // Inicializar
+        window.addEventListener('load', () => {
+            updateServerInfo();
+            syncData();
+            setInterval(syncData, 15000);
+        });
+    </script>
+</body>
+</html>
