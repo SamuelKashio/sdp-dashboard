@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Service Desk Plus - Kashio</title>
+    <title>Informe General de Tickets - Kashio SDP</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <style>
         * {
@@ -14,129 +14,215 @@
 
         :root {
             --primary: #2563eb;
+            --secondary: #7c3aed;
             --success: #10b981;
             --warning: #f59e0b;
             --danger: #ef4444;
             --dark: #1f2937;
             --light: #f9fafb;
+            --border: #e5e7eb;
         }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
+            padding: 15px;
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
         }
 
+        /* HEADER */
         .header {
             background: white;
             border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 30px;
+            padding: 25px;
+            margin-bottom: 25px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
         }
 
-        .header h1 {
+        .header-left h1 {
             color: var(--primary);
-            margin-bottom: 10px;
+            font-size: 28px;
+            margin-bottom: 5px;
         }
 
-        .header p {
+        .header-left p {
             color: #6b7280;
+            font-size: 14px;
         }
 
-        .server-info {
-            background: #f3f4f6;
-            padding: 10px 15px;
+        .header-right {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
             border-radius: 6px;
-            margin-top: 10px;
-            font-size: 0.9em;
-            color: #374151;
-        }
-
-        .status {
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 20px;
+            cursor: pointer;
             font-weight: 600;
-            margin-top: 15px;
+            font-size: 13px;
+            transition: all 0.3s;
         }
 
-        .status.success {
-            background: #d1fae5;
-            color: #065f46;
+        .btn-primary {
+            background: var(--primary);
+            color: white;
         }
 
-        .status.error {
-            background: #fee2e2;
-            color: #991b1b;
+        .btn-primary:hover {
+            background: #1d4ed8;
+            transform: translateY(-2px);
         }
 
-        .status.loading {
-            background: #fef3c7;
-            color: #78350f;
+        .btn-secondary {
+            background: var(--secondary);
+            color: white;
         }
 
-        .stats-grid {
+        .btn-secondary:hover {
+            background: #6d28d9;
+        }
+
+        /* KPI CARDS */
+        .kpi-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 15px;
-            margin: 20px 0;
+            margin-bottom: 25px;
         }
 
-        .stat-card {
-            background: linear-gradient(135deg, var(--primary), #1e40af);
-            color: white;
+        .kpi-card {
+            background: white;
             padding: 20px;
-            border-radius: 8px;
-            text-align: center;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border-left: 4px solid var(--primary);
+            transition: all 0.3s;
         }
 
-        .stat-card.success {
-            background: linear-gradient(135deg, var(--success), #059669);
+        .kpi-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.12);
         }
 
-        .stat-card.warning {
-            background: linear-gradient(135deg, var(--warning), #d97706);
+        .kpi-card.blue {
+            border-left-color: #3b82f6;
         }
 
-        .stat-card.danger {
-            background: linear-gradient(135deg, var(--danger), #dc2626);
+        .kpi-card.green {
+            border-left-color: #10b981;
         }
 
-        .stat-number {
-            font-size: 2.5em;
+        .kpi-card.orange {
+            border-left-color: #f59e0b;
+        }
+
+        .kpi-card.red {
+            border-left-color: #ef4444;
+        }
+
+        .kpi-card.purple {
+            border-left-color: #a855f7;
+        }
+
+        .kpi-label {
+            color: #6b7280;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .kpi-value {
+            font-size: 32px;
             font-weight: bold;
+            color: var(--dark);
+            margin-bottom: 8px;
         }
 
-        .stat-label {
-            font-size: 0.9em;
-            opacity: 0.9;
-            margin-top: 5px;
+        .kpi-change {
+            font-size: 12px;
+            color: #10b981;
         }
 
+        .kpi-change.negative {
+            color: #ef4444;
+        }
+
+        /* FILTERS */
+        .filters {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .filter-group label {
+            display: block;
+            font-weight: 600;
+            color: #374151;
+            font-size: 12px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-group select,
+        .filter-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+
+        .filter-group select:focus,
+        .filter-group input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        /* CHARTS GRID */
         .charts-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
             gap: 20px;
-            margin-bottom: 30px;
+            margin-bottom: 25px;
         }
 
         .chart-card {
             background: white;
             padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
         }
 
         .chart-card h3 {
             color: var(--primary);
             margin-bottom: 15px;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .chart-container {
@@ -144,38 +230,22 @@
             height: 300px;
         }
 
-        .controls {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-        }
-
-        .controls button {
-            padding: 10px 20px;
-            margin-right: 10px;
-            margin-bottom: 10px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            background: var(--primary);
-            color: white;
-            transition: all 0.3s;
-        }
-
-        .controls button:hover {
-            background: #1d4ed8;
-            transform: translateY(-2px);
-        }
-
+        /* TABLE */
         .table-container {
             background: white;
             padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
             overflow-x: auto;
+        }
+
+        .table-container h3 {
+            color: var(--primary);
+            margin-bottom: 15px;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
         }
 
         table {
@@ -188,191 +258,441 @@
             padding: 12px;
             text-align: left;
             font-weight: 600;
-            border-bottom: 2px solid #e5e7eb;
+            font-size: 12px;
+            color: #374151;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--border);
         }
 
         td {
             padding: 12px;
-            border-bottom: 1px solid #e5e7eb;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
         }
 
         tr:hover {
-            background: #f9fafb;
+            background: var(--light);
         }
 
         .badge {
             display: inline-block;
             padding: 4px 12px;
             border-radius: 20px;
-            font-size: 0.85em;
+            font-size: 11px;
             font-weight: 600;
+            text-transform: uppercase;
         }
 
-        .badge-nuevo { background: #dbeafe; color: #0c4a6e; }
-        .badge-asignado { background: #d1fae5; color: #065f46; }
-        .badge-en-curso { background: #fef3c7; color: #78350f; }
-        .badge-resuelto { background: #e5e7eb; color: #374151; }
-        .badge-invalido { background: #fee2e2; color: #991b1b; }
-        .badge-pendiente { background: #ddd6fe; color: #4c1d95; }
-        .badge-cerrado { background: #d1d5db; color: #1f2937; }
-
-        .overdue {
-            color: var(--danger);
-            font-weight: 600;
+        .badge-nuevo { 
+            background: #dbeafe; 
+            color: #0c4a6e; 
         }
 
-        @media (max-width: 768px) {
+        .badge-asignado { 
+            background: #d1fae5; 
+            color: #065f46; 
+        }
+
+        .badge-en-curso { 
+            background: #fef3c7; 
+            color: #78350f; 
+        }
+
+        .badge-resuelto { 
+            background: #dcfce7; 
+            color: #15803d; 
+        }
+
+        .badge-pendiente { 
+            background: #ede9fe; 
+            color: #5b21b6; 
+        }
+
+        .badge-cerrado { 
+            background: #f3f4f6; 
+            color: #374151; 
+        }
+
+        /* PIVOT TABLES */
+        .pivot-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .pivot-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+
+        .pivot-card h3 {
+            color: var(--primary);
+            margin-bottom: 15px;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .pivot-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        .pivot-table th {
+            background: var(--light);
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            color: #374151;
+            text-transform: uppercase;
+        }
+
+        .pivot-table td {
+            padding: 10px;
+            border: 1px solid var(--border);
+        }
+
+        .pivot-table tr:hover {
+            background: var(--light);
+        }
+
+        .number {
+            text-align: right;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .percentage {
+            text-align: right;
+            font-weight: 600;
+            color: var(--success);
+        }
+
+        /* STATUS */
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success);
+            margin-right: 8px;
+        }
+
+        .status-indicator.loading {
+            background: var(--warning);
+        }
+
+        .status-indicator.error {
+            background: var(--danger);
+        }
+
+        .status-bar {
+            padding: 10px 15px;
+            background: var(--light);
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        @media (max-width: 1200px) {
             .charts-grid {
                 grid-template-columns: 1fr;
             }
-            .stat-number {
-                font-size: 2em;
+
+            .pivot-grid {
+                grid-template-columns: 1fr;
             }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .header-right {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .filters {
+                grid-template-columns: 1fr;
+            }
+
+            .kpi-value {
+                font-size: 24px;
+            }
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- HEADER -->
         <div class="header">
-            <h1>📊 Dashboard Service Desk Plus - Kashio</h1>
-            <p>Sincronización en tiempo real</p>
-            <div class="server-info" id="serverInfo">🔍 Detectando servidor...</div>
-            <div class="status loading" id="status">⏳ Cargando datos...</div>
-            <div id="lastUpdate" style="margin-top: 10px; color: #6b7280; font-size: 0.9em;"></div>
-
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-number" id="totalTickets">0</div>
-                    <div class="stat-label">Total Tickets</div>
-                </div>
-                <div class="stat-card success">
-                    <div class="stat-number" id="resolvedCount">0</div>
-                    <div class="stat-label">Resueltos</div>
-                </div>
-                <div class="stat-card warning">
-                    <div class="stat-number" id="pendingCount">0</div>
-                    <div class="stat-label">Pendientes</div>
-                </div>
-                <div class="stat-card danger">
-                    <div class="stat-number" id="overdueCount">0</div>
-                    <div class="stat-label">Vencidos</div>
-                </div>
+            <div class="header-left">
+                <h1>📊 Informe General de Tickets</h1>
+                <p>Dashboard en tiempo real - Service Desk Plus Kashio</p>
+            </div>
+            <div class="header-right">
+                <button class="btn btn-primary" onclick="syncData()">🔄 Sincronizar</button>
+                <button class="btn btn-secondary" onclick="exportToJSON()">💾 JSON</button>
+                <button class="btn btn-secondary" onclick="exportToCSV()">📋 CSV</button>
             </div>
         </div>
 
-        <div class="controls">
-            <button onclick="syncData()">🔄 Sincronizar Ahora</button>
-            <button onclick="exportToJSON()">💾 Descargar JSON</button>
-            <button onclick="exportToCSV()">📋 Descargar CSV</button>
+        <div class="status-bar">
+            <span class="status-indicator" id="statusDot"></span>
+            <span id="statusText">Cargando datos...</span>
+            <span id="lastUpdate" style="float: right;"></span>
         </div>
 
+        <!-- KPI CARDS -->
+        <div class="kpi-grid">
+            <div class="kpi-card blue">
+                <div class="kpi-label">📊 Total Tickets</div>
+                <div class="kpi-value" id="kpiTotal">0</div>
+                <div class="kpi-change" id="kpiTotalChange">+0%</div>
+            </div>
+            <div class="kpi-card green">
+                <div class="kpi-label">✅ Resueltos</div>
+                <div class="kpi-value" id="kpiResueltos">0</div>
+                <div class="kpi-change" id="kpiResueltosChange">+0%</div>
+            </div>
+            <div class="kpi-card orange">
+                <div class="kpi-label">⏳ Pendientes</div>
+                <div class="kpi-value" id="kpiPendientes">0</div>
+                <div class="kpi-change negative" id="kpiPendientesChange">+0%</div>
+            </div>
+            <div class="kpi-card red">
+                <div class="kpi-label">⚠️ Vencidos</div>
+                <div class="kpi-value" id="kpiVencidos">0</div>
+                <div class="kpi-change negative" id="kpiVencidosChange">+0%</div>
+            </div>
+            <div class="kpi-card purple">
+                <div class="kpi-label">🚀 Hoy Completados</div>
+                <div class="kpi-value" id="kpiHoyCompletados">0</div>
+                <div class="kpi-change" id="kpiHoyChange">+0%</div>
+            </div>
+        </div>
+
+        <!-- FILTERS -->
+        <div class="filters">
+            <div class="filter-group">
+                <label>Año</label>
+                <select id="filterYear" onchange="applyFilters()">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Mes</label>
+                <select id="filterMonth" onchange="applyFilters()">
+                    <option value="">Todos</option>
+                    <option value="1">Enero</option>
+                    <option value="2">Febrero</option>
+                    <option value="3">Marzo</option>
+                    <option value="4">Abril</option>
+                    <option value="5">Mayo</option>
+                    <option value="6">Junio</option>
+                    <option value="7">Julio</option>
+                    <option value="8">Agosto</option>
+                    <option value="9">Septiembre</option>
+                    <option value="10">Octubre</option>
+                    <option value="11">Noviembre</option>
+                    <option value="12">Diciembre</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Grupo</label>
+                <select id="filterGroup" onchange="applyFilters()">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Técnico</label>
+                <select id="filterTechnician" onchange="applyFilters()">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Prioridad</label>
+                <select id="filterPriority" onchange="applyFilters()">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Estado</label>
+                <select id="filterStatus" onchange="applyFilters()">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- CHARTS -->
         <div class="charts-grid">
             <div class="chart-card">
-                <h3>📈 Por Estado</h3>
+                <h3>📈 Evolución de Tickets</h3>
+                <div class="chart-container">
+                    <canvas id="lineChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>📊 Por Estado</h3>
                 <div class="chart-container">
                     <canvas id="statusChart"></canvas>
                 </div>
             </div>
             <div class="chart-card">
-                <h3>👥 Top 10 Técnicos</h3>
+                <h3>🏢 Por Tipo de Solicitud</h3>
                 <div class="chart-container">
-                    <canvas id="assigneeChart"></canvas>
+                    <canvas id="typeChart"></canvas>
                 </div>
             </div>
             <div class="chart-card">
-                <h3>⚠️ Vencidos por Estado</h3>
+                <h3>🏢 Por Empresa</h3>
                 <div class="chart-container">
-                    <canvas id="overdueChart"></canvas>
+                    <canvas id="companyChart"></canvas>
                 </div>
             </div>
             <div class="chart-card">
-                <h3>📋 Top 10 Solicitantes</h3>
+                <h3>🏢 Por Tipo de Empresa</h3>
                 <div class="chart-container">
-                    <canvas id="requesterChart"></canvas>
+                    <canvas id="companyTypeChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>📋 Por Categoría</h3>
+                <div class="chart-container">
+                    <canvas id="categoryChart"></canvas>
                 </div>
             </div>
         </div>
 
+        <!-- STATUS TABLE -->
         <div class="table-container">
-            <h3 style="margin-bottom: 20px;">📋 Últimos 20 Tickets</h3>
+            <h3>📋 Tickets por Estado</h3>
             <table>
                 <thead>
                     <tr>
-                        <th>ID</th>
-                        <th>Asunto</th>
                         <th>Estado</th>
-                        <th>Solicitante</th>
-                        <th>Asignado</th>
-                        <th>Creado</th>
-                        <th>Vencido</th>
+                        <th>Cantidad</th>
+                        <th>% del Total</th>
+                        <th>Mes Anterior</th>
+                        <th>Variación</th>
                     </tr>
                 </thead>
-                <tbody id="ticketsTable">
-                    <tr><td colspan="7" style="text-align: center; padding: 20px;">Cargando...</td></tr>
+                <tbody id="statusTable">
+                    <tr><td colspan="5" class="loading">Cargando datos...</td></tr>
                 </tbody>
             </table>
+        </div>
+
+        <!-- PIVOT TABLES -->
+        <div class="pivot-grid">
+            <div class="pivot-card">
+                <h3>📊 Completitud por Empresa</h3>
+                <table class="pivot-table" id="pivotTable1">
+                    <thead>
+                        <tr>
+                            <th>Empresa</th>
+                            <th>% Completa</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="3" class="loading">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pivot-card">
+                <h3>📊 Resumen General</h3>
+                <table class="pivot-table" id="pivotTable2">
+                    <thead>
+                        <tr>
+                            <th>Métrica</th>
+                            <th>Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="2" class="loading">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
     <script>
         let allTickets = [];
         let charts = {};
-        let serverUrl = '';
+        let filteredTickets = [];
 
-        // Detectar servidor automáticamente
         function getServerUrl() {
-            // Si está en Netlify (dominio netlify.app), usar el servidor en Render
-            if (window.location.hostname.includes('netlify.app')) {
-                return 'https://sdp-server.onrender.com';
+            if (window.location.hostname.includes('netlify.app') || window.location.hostname.includes('onrender.com')) {
+                return window.location.origin;
             }
-            // Si está en localhost, usar localhost
             if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
                 return 'http://localhost:3000';
             }
-            // Default: usar desde mismo origen (proxy via netlify.toml)
             return window.location.origin;
-        }
-
-        function updateServerInfo() {
-            serverUrl = getServerUrl();
-            const info = document.getElementById('serverInfo');
-            
-            if (window.location.hostname.includes('netlify.app')) {
-                info.innerHTML = '☁️ Ejecutándose en: <strong>Netlify + Render</strong>';
-            } else if (window.location.hostname === 'localhost') {
-                info.innerHTML = '💻 Ejecutándose en: <strong>Local (localhost:3000)</strong>';
-            } else {
-                info.innerHTML = '🌐 Ejecutándose en: <strong>' + window.location.hostname + '</strong>';
-            }
         }
 
         async function syncData() {
             try {
                 updateStatus('loading', '⏳ Sincronizando...');
                 
-                const url = serverUrl + '/api/export';
-                console.log('Conectando a:', url);
+                const serverUrl = getServerUrl();
+                const response = await fetch(serverUrl + '/api/export');
                 
-                const response = await fetch(url);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 
                 const data = await response.json();
-                
                 allTickets = data.tickets || [];
+                filteredTickets = [...allTickets];
                 
                 if (allTickets.length === 0) {
                     updateStatus('error', '❌ Sin datos');
                     return;
                 }
 
-                updateStatistics();
+                populateFilters();
+                updateKPIs();
                 renderCharts();
-                renderTable();
+                renderStatusTable();
+                renderPivotTables();
                 updateStatus('success', `✅ ${allTickets.length} tickets cargados`);
-                document.getElementById('lastUpdate').textContent = `Última actualización: ${new Date().toLocaleTimeString('es-ES')}`;
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('es-ES');
 
             } catch (error) {
                 console.error('Error:', error);
@@ -381,27 +701,158 @@
         }
 
         function updateStatus(type, message) {
-            const statusEl = document.getElementById('status');
-            statusEl.className = `status ${type}`;
-            statusEl.textContent = message;
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            
+            dot.className = `status-indicator ${type}`;
+            text.textContent = message;
         }
 
-        function updateStatistics() {
-            const total = allTickets.length;
-            const resolved = allTickets.filter(t => t.status === 'Resuelto').length;
-            const pending = allTickets.filter(t => ['Nuevo', 'En curso', 'Asignado'].includes(t.status)).length;
-            const overdue = allTickets.filter(t => t.overdue).length;
+        function populateFilters() {
+            // Years
+            const years = [...new Set(allTickets.map(t => new Date(parseInt(t.createdTime)).getFullYear()))].sort((a, b) => b - a);
+            const yearSelect = document.getElementById('filterYear');
+            years.forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                yearSelect.appendChild(option);
+            });
 
-            document.getElementById('totalTickets').textContent = total;
-            document.getElementById('resolvedCount').textContent = resolved;
-            document.getElementById('pendingCount').textContent = pending;
-            document.getElementById('overdueCount').textContent = overdue;
+            // Groups
+            const groups = [...new Set(allTickets.map(t => t.group).filter(Boolean))].sort();
+            const groupSelect = document.getElementById('filterGroup');
+            groups.forEach(group => {
+                const option = document.createElement('option');
+                option.value = group;
+                option.textContent = group;
+                groupSelect.appendChild(option);
+            });
+
+            // Technicians
+            const technicians = [...new Set(allTickets.map(t => t.assignedTo).filter(Boolean))].sort();
+            const techSelect = document.getElementById('filterTechnician');
+            technicians.forEach(tech => {
+                const option = document.createElement('option');
+                option.value = tech;
+                option.textContent = tech;
+                techSelect.appendChild(option);
+            });
+
+            // Priorities
+            const priorities = [...new Set(allTickets.map(t => t.priority).filter(Boolean))].sort();
+            const prioritySelect = document.getElementById('filterPriority');
+            priorities.forEach(priority => {
+                const option = document.createElement('option');
+                option.value = priority;
+                option.textContent = priority;
+                prioritySelect.appendChild(option);
+            });
+
+            // Status
+            const statuses = [...new Set(allTickets.map(t => t.status).filter(Boolean))].sort();
+            const statusSelect = document.getElementById('filterStatus');
+            statuses.forEach(status => {
+                const option = document.createElement('option');
+                option.value = status;
+                option.textContent = status;
+                statusSelect.appendChild(option);
+            });
+        }
+
+        function applyFilters() {
+            const year = document.getElementById('filterYear').value;
+            const month = document.getElementById('filterMonth').value;
+            const group = document.getElementById('filterGroup').value;
+            const technician = document.getElementById('filterTechnician').value;
+            const priority = document.getElementById('filterPriority').value;
+            const status = document.getElementById('filterStatus').value;
+
+            filteredTickets = allTickets.filter(t => {
+                const createdDate = new Date(parseInt(t.createdTime));
+                
+                if (year && createdDate.getFullYear() != year) return false;
+                if (month && (createdDate.getMonth() + 1) != month) return false;
+                if (group && t.group !== group) return false;
+                if (technician && t.assignedTo !== technician) return false;
+                if (priority && t.priority !== priority) return false;
+                if (status && t.status !== status) return false;
+                
+                return true;
+            });
+
+            updateKPIs();
+            renderCharts();
+            renderStatusTable();
+            renderPivotTables();
+        }
+
+        function updateKPIs() {
+            const total = filteredTickets.length;
+            const resolved = filteredTickets.filter(t => t.status === 'Resuelto').length;
+            const pending = filteredTickets.filter(t => ['Nuevo', 'En curso', 'Asignado'].includes(t.status)).length;
+            const overdue = filteredTickets.filter(t => t.overdue).length;
+            const todayCompleted = filteredTickets.filter(t => {
+                const createdDate = new Date(parseInt(t.createdTime));
+                const today = new Date();
+                return createdDate.toDateString() === today.toDateString() && t.status === 'Resuelto';
+            }).length;
+
+            document.getElementById('kpiTotal').textContent = total.toLocaleString();
+            document.getElementById('kpiResueltos').textContent = resolved.toLocaleString();
+            document.getElementById('kpiPendientes').textContent = pending.toLocaleString();
+            document.getElementById('kpiVencidos').textContent = overdue.toLocaleString();
+            document.getElementById('kpiHoyCompletados').textContent = todayCompleted.toLocaleString();
+
+            // Calculate percentages
+            const resolvedPct = total > 0 ? ((resolved / total) * 100).toFixed(1) : 0;
+            const pendingPct = total > 0 ? ((pending / total) * 100).toFixed(1) : 0;
+            const overduePct = total > 0 ? ((overdue / total) * 100).toFixed(1) : 0;
+
+            document.getElementById('kpiResueltosChange').textContent = `${resolvedPct}% del total`;
+            document.getElementById('kpiPendientesChange').textContent = `${pendingPct}% del total`;
+            document.getElementById('kpiVencidosChange').textContent = `${overduePct}% del total`;
+            document.getElementById('kpiTotalChange').textContent = `100% en el sistema`;
         }
 
         function renderCharts() {
-            // Status Chart
+            // Line Chart - Evolución diaria
+            const dailyData = {};
+            filteredTickets.forEach(t => {
+                const date = new Date(parseInt(t.createdTime)).toLocaleDateString('es-ES');
+                dailyData[date] = (dailyData[date] || 0) + 1;
+            });
+
+            const sortedDates = Object.keys(dailyData).sort();
+            const dailyCounts = sortedDates.map(d => dailyData[d]);
+
+            if (charts.line) charts.line.destroy();
+            const lineCtx = document.getElementById('lineChart').getContext('2d');
+            charts.line = new Chart(lineCtx, {
+                type: 'line',
+                data: {
+                    labels: sortedDates.slice(-30),
+                    datasets: [{
+                        label: 'Tickets',
+                        data: dailyCounts.slice(-30),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            // Status Chart - Doughnut
             const statusData = {};
-            allTickets.forEach(t => {
+            filteredTickets.forEach(t => {
                 statusData[t.status] = (statusData[t.status] || 0) + 1;
             });
 
@@ -413,7 +864,7 @@
                     labels: Object.keys(statusData),
                     datasets: [{
                         data: Object.values(statusData),
-                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4']
                     }]
                 },
                 options: {
@@ -423,22 +874,51 @@
                 }
             });
 
-            // Assignee Chart
-            const assigneeData = {};
-            allTickets.filter(t => t.assignedTo).forEach(t => {
-                assigneeData[t.assignedTo] = (assigneeData[t.assignedTo] || 0) + 1;
+            // Type Chart
+            const typeData = {};
+            filteredTickets.forEach(t => {
+                const type = t.type || 'Sin tipo';
+                typeData[type] = (typeData[type] || 0) + 1;
             });
-            const topAssignees = Object.entries(assigneeData).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
-            if (charts.assignee) charts.assignee.destroy();
-            const assigneeCtx = document.getElementById('assigneeChart').getContext('2d');
-            charts.assignee = new Chart(assigneeCtx, {
+            if (charts.type) charts.type.destroy();
+            const typeCtx = document.getElementById('typeChart').getContext('2d');
+            charts.type = new Chart(typeCtx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(typeData),
+                    datasets: [{
+                        data: Object.values(typeData),
+                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#a855f7']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'right' } }
+                }
+            });
+
+            // Company Chart
+            const companyData = {};
+            filteredTickets.forEach(t => {
+                const company = t.company || 'Sin empresa';
+                companyData[company] = (companyData[company] || 0) + 1;
+            });
+
+            const topCompanies = Object.entries(companyData)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 8);
+
+            if (charts.company) charts.company.destroy();
+            const companyCtx = document.getElementById('companyChart').getContext('2d');
+            charts.company = new Chart(companyCtx, {
                 type: 'bar',
                 data: {
-                    labels: topAssignees.map(a => a[0]),
+                    labels: topCompanies.map(c => c[0]),
                     datasets: [{
                         label: 'Tickets',
-                        data: topAssignees.map(a => a[1]),
+                        data: topCompanies.map(c => c[1]),
                         backgroundColor: '#3b82f6'
                     }]
                 },
@@ -450,49 +930,53 @@
                 }
             });
 
-            // Overdue Chart
-            const overdueByStatus = {};
-            allTickets.filter(t => t.overdue).forEach(t => {
-                overdueByStatus[t.status] = (overdueByStatus[t.status] || 0) + 1;
+            // Company Type Chart
+            const companyTypeData = {};
+            filteredTickets.forEach(t => {
+                const type = t.companyType || 'Sin tipo';
+                companyTypeData[type] = (companyTypeData[type] || 0) + 1;
             });
 
-            if (charts.overdue) charts.overdue.destroy();
-            const overdueCtx = document.getElementById('overdueChart').getContext('2d');
-            charts.overdue = new Chart(overdueCtx, {
+            if (charts.companyType) charts.companyType.destroy();
+            const companyTypeCtx = document.getElementById('companyTypeChart').getContext('2d');
+            charts.companyType = new Chart(companyTypeCtx, {
                 type: 'bar',
                 data: {
-                    labels: Object.keys(overdueByStatus),
+                    labels: Object.keys(companyTypeData),
                     datasets: [{
-                        label: 'Vencidos',
-                        data: Object.values(overdueByStatus),
-                        backgroundColor: '#ef4444'
+                        label: 'Tickets',
+                        data: Object.values(companyTypeData),
+                        backgroundColor: ['#10b981', '#f59e0b', '#ef4444']
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: { y: { beginAtZero: true } }
+                    plugins: { legend: { display: false } }
                 }
             });
 
-            // Requester Chart
-            const requesterData = {};
-            allTickets.forEach(t => {
-                requesterData[t.requestor] = (requesterData[t.requestor] || 0) + 1;
+            // Category Chart
+            const categoryData = {};
+            filteredTickets.forEach(t => {
+                const category = t.category || 'Sin categoría';
+                categoryData[category] = (categoryData[category] || 0) + 1;
             });
-            const topRequesters = Object.entries(requesterData).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
-            if (charts.requester) charts.requester.destroy();
-            const requesterCtx = document.getElementById('requesterChart').getContext('2d');
-            charts.requester = new Chart(requesterCtx, {
+            const topCategories = Object.entries(categoryData)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 6);
+
+            if (charts.category) charts.category.destroy();
+            const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+            charts.category = new Chart(categoryCtx, {
                 type: 'bar',
                 data: {
-                    labels: topRequesters.map(r => r[0]),
+                    labels: topCategories.map(c => c[0]),
                     datasets: [{
                         label: 'Tickets',
-                        data: topRequesters.map(r => r[1]),
-                        backgroundColor: '#06b6d4'
+                        data: topCategories.map(c => c[1]),
+                        backgroundColor: '#a855f7'
                     }]
                 },
                 options: {
@@ -504,44 +988,84 @@
             });
         }
 
-        function renderTable() {
-            const tbody = document.getElementById('ticketsTable');
+        function renderStatusTable() {
+            const statusData = {};
+            allTickets.forEach(t => {
+                statusData[t.status] = (statusData[t.status] || 0) + 1;
+            });
+
+            const tbody = document.getElementById('statusTable');
             tbody.innerHTML = '';
 
-            allTickets.slice(0, 20).forEach(ticket => {
-                const createdDate = new Date(parseInt(ticket.createdTime)).toLocaleDateString('es-ES');
-                const dueDate = ticket.dueDate ? new Date(parseInt(ticket.dueDate)).toLocaleDateString('es-ES') : '-';
-                
-                const statusClass = {
-                    'Nuevo': 'badge-nuevo',
-                    'Asignado': 'badge-asignado',
-                    'En curso': 'badge-en-curso',
-                    'Resuelto': 'badge-resuelto',
-                    'Inválido': 'badge-invalido',
-                    'Pendiente en Cliente': 'badge-pendiente',
-                    'Cerrado': 'badge-cerrado'
-                }[ticket.status] || 'badge-nuevo';
-
-                const row = `
-                    <tr>
-                        <td><strong>${ticket.displayId}</strong></td>
-                        <td>${ticket.subject.substring(0, 50)}</td>
-                        <td><span class="badge ${statusClass}">${ticket.status}</span></td>
-                        <td>${ticket.requestor}</td>
-                        <td>${ticket.assignedTo || '-'}</td>
-                        <td>${createdDate}</td>
-                        <td>${ticket.overdue ? '<span class="overdue">⚠️ VENCIDO</span>' : '✓'}</td>
-                    </tr>
+            const total = allTickets.length;
+            for (const [status, count] of Object.entries(statusData)) {
+                const pct = ((count / total) * 100).toFixed(1);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${status}</strong></td>
+                    <td class="number">${count}</td>
+                    <td class="percentage">${pct}%</td>
+                    <td>-</td>
+                    <td>-</td>
                 `;
-                tbody.innerHTML += row;
+                tbody.appendChild(row);
+            }
+        }
+
+        function renderPivotTables() {
+            // Pivot 1 - Empresas
+            const companyData = {};
+            filteredTickets.forEach(t => {
+                const company = t.company || 'Sin empresa';
+                if (!companyData[company]) {
+                    companyData[company] = { total: 0, completed: 0 };
+                }
+                companyData[company].total++;
+                if (t.status === 'Resuelto') {
+                    companyData[company].completed++;
+                }
+            });
+
+            const tbody1 = document.querySelector('#pivotTable1 tbody');
+            tbody1.innerHTML = '';
+
+            for (const [company, data] of Object.entries(companyData).sort()) {
+                const pct = ((data.completed / data.total) * 100).toFixed(1);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${company}</strong></td>
+                    <td class="percentage">${pct}%</td>
+                    <td class="number">${data.total}</td>
+                `;
+                tbody1.appendChild(row);
+            }
+
+            // Pivot 2 - Resumen
+            const tbody2 = document.querySelector('#pivotTable2 tbody');
+            tbody2.innerHTML = '';
+
+            const metrics = [
+                { name: 'Total Tickets', value: filteredTickets.length },
+                { name: 'Resueltos', value: filteredTickets.filter(t => t.status === 'Resuelto').length },
+                { name: 'Pendientes', value: filteredTickets.filter(t => ['Nuevo', 'En curso', 'Asignado'].includes(t.status)).length },
+                { name: 'Vencidos', value: filteredTickets.filter(t => t.overdue).length }
+            ];
+
+            metrics.forEach(m => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${m.name}</strong></td>
+                    <td class="number">${m.value}</td>
+                `;
+                tbody2.appendChild(row);
             });
         }
 
         function exportToJSON() {
             const data = {
                 exportDate: new Date().toISOString(),
-                totalTickets: allTickets.length,
-                tickets: allTickets
+                totalTickets: filteredTickets.length,
+                tickets: filteredTickets
             };
             const json = JSON.stringify(data, null, 2);
             const blob = new Blob([json], { type: 'application/json' });
@@ -554,7 +1078,7 @@
 
         function exportToCSV() {
             let csv = 'ID,Asunto,Estado,Solicitante,Asignado,Creado,Vencido\n';
-            allTickets.forEach(t => {
+            filteredTickets.forEach(t => {
                 const createdDate = new Date(parseInt(t.createdTime)).toLocaleDateString('es-ES');
                 csv += `"${t.displayId}","${t.subject}","${t.status}","${t.requestor}","${t.assignedTo || '-'}","${createdDate}","${t.overdue ? 'Sí' : 'No'}"\n`;
             });
@@ -568,9 +1092,8 @@
 
         // Inicializar
         window.addEventListener('load', () => {
-            updateServerInfo();
             syncData();
-            setInterval(syncData, 15000);
+            setInterval(syncData, 15 * 60 * 1000); // Cada 15 minutos
         });
     </script>
 </body>
