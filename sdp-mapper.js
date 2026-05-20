@@ -1,407 +1,306 @@
 /**
- * Service Desk Plus Cloud - Data Mapper (VERSIÓN SIMPLIFICADA)
- * Endpoint: GET https://soporte.kashio.net/app/itdesk/api/v3/requests?input_data={...}
- * Auth: Zoho-oauthtoken
+ * SDP Mapper V3 - Lazy Loading por año
+ * - Cache separado por año
+ * - Sync del año actual al iniciar
+ * - Sync bajo demanda para años anteriores
  */
+const fs = require('fs');
+const path = require('path');
+const CONCURRENCY = 15;
 
 class SDPDataMapper {
   constructor(clientId, clientSecret, refreshToken, subdomain, domain, portalUrl) {
     this.clientId = clientId;
     this.clientSecret = clientSecret;
     this.refreshToken = refreshToken;
-    
-    // URL base del API
-    this.subdomain = subdomain;
-    this.domain = domain;
-    this.portalUrl = portalUrl;
     this.apiBase = `https://${subdomain}.${domain}/app/${portalUrl}/api/v3`;
-    
     this.accessToken = null;
     this.tokenExpiresAt = null;
-    
-    // Almacenamiento de datos
-    this.mappedData = {
-      tickets: [],
-      summary: {},
-      lastUpdate: null
-    };
+    this.cache = {};       // { 2025: [tickets...], 2026: [tickets...] }
+    this.cacheInfo = {};   // { 2025: { total, syncedAt }, 2026: { ... } }
+    this.syncProgress = { status: 'idle', year: null, total: 0, current: 0, phase: '', pct: 0 };
+    this.loadAllCaches();
   }
 
-  /**
-   * Refresca el access token
-   */
-  async refreshAccessToken() {
+  // ===== CACHE POR AÑO =====
+  cacheFile(year) { return path.join(__dirname, `tickets-cache-${year}.json`); }
+
+  loadAllCaches() {
+    const currentYear = new Date().getFullYear();
+    [currentYear, currentYear - 1].forEach(year => this.loadYearCache(year));
+  }
+
+  loadYearCache(year) {
     try {
-      const url = "https://accounts.zoho.com/oauth/v2/token";
-      
-      const params = new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: this.refreshToken,
-        client_id: this.clientId,
-        client_secret: this.clientSecret
-      });
-
-      console.log('🔄 Refrescando token de Zoho...');
-
-      const response = await fetch(url, {
-        method: "POST",
-        body: params,
-        headers: { "Content-Type": "application/x-www-form-urlencoded" }
-      });
-
-      const data = await response.json();
-
-      if (data.error) {
-        throw new Error(`Zoho Error: ${data.error}`);
+      const file = this.cacheFile(year);
+      if (fs.existsSync(file)) {
+        const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+        this.cache[year] = raw.tickets || [];
+        this.cacheInfo[year] = { total: raw.tickets?.length || 0, syncedAt: raw.syncedAt, complete: raw.complete || false };
+        console.log(`📦 Caché ${year}: ${this.cache[year].length} tickets (completo: ${raw.complete})`);
       }
-
-      if (!data.access_token) {
-        throw new Error(`Sin access_token en respuesta`);
-      }
-
-      this.accessToken = data.access_token;
-      this.tokenExpiresAt = new Date(Date.now() + (data.expires_in * 1000));
-      
-      console.log(`✅ Token refrescado correctamente`);
-      console.log(`   Válido hasta: ${this.tokenExpiresAt.toLocaleTimeString()}`);
-      
-      return this.accessToken;
-    } catch (error) {
-      console.error("❌ Error refrescando token:", error.message);
-      throw error;
-    }
+    } catch (e) { console.log(`📦 Sin caché para ${year}`); }
   }
 
-  /**
-   * Obtiene token válido
-   */
-  async getValidToken() {
-    if (!this.accessToken || new Date() > new Date(this.tokenExpiresAt - 300000)) {
-      console.log('⏳ Token inválido o próximo a expirar, obteniendo uno nuevo...');
-      await this.refreshAccessToken();
-    }
+  saveYearCache(year, complete = true) {
+    try {
+      fs.writeFileSync(this.cacheFile(year), JSON.stringify({
+        year, tickets: this.cache[year] || [], syncedAt: new Date().toISOString(), complete
+      }), 'utf8');
+      console.log(`💾 Caché ${year} guardado: ${this.cache[year]?.length} tickets`);
+    } catch (e) { console.error('❌ Error guardando caché:', e.message); }
+  }
+
+  getAllTickets() {
+    return Object.values(this.cache).flat();
+  }
+
+  getYearsAvailable() {
+    return Object.entries(this.cacheInfo).map(([year, info]) => ({
+      year: parseInt(year), total: info.total, syncedAt: info.syncedAt, complete: info.complete
+    }));
+  }
+
+  // ===== TOKEN =====
+  async refreshAccessToken() {
+    const params = new URLSearchParams({
+      grant_type: 'refresh_token', refresh_token: this.refreshToken,
+      client_id: this.clientId, client_secret: this.clientSecret
+    });
+    const res = await fetch('https://accounts.zoho.com/oauth/v2/token', {
+      method: 'POST', body: params, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+    const data = await res.json();
+    if (!data.access_token) throw new Error(`Token error: ${JSON.stringify(data)}`);
+    this.accessToken = data.access_token;
+    this.tokenExpiresAt = new Date(Date.now() + data.expires_in * 1000);
+    console.log(`✅ Token válido hasta: ${this.tokenExpiresAt.toLocaleTimeString()}`);
     return this.accessToken;
   }
 
-  /**
-    * Obtiene todos los tickets CON udf_fields (consultando cada uno individualmente)
-   */
-  async fetchAllTickets() {
+  async getValidToken() {
+    if (!this.accessToken || new Date() > new Date(this.tokenExpiresAt - 300000))
+      await this.refreshAccessToken();
+    return this.accessToken;
+  }
+
+  // ===== FETCH LISTA PAGINADA =====
+  async fetchPage(token, startIndex, fromTime, toTime) {
+    const input = {
+      list_info: {
+        start_index: startIndex, row_count: 100,
+        sort_field: 'created_time', sort_order: 'desc',
+        ...(fromTime ? { search_fields: { created_time: { from_time: String(fromTime), to_time: String(toTime) } } } : {})
+      }
+    };
+    const url = `${this.apiBase}/requests?input_data=${encodeURIComponent(JSON.stringify(input))}`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Zoho-oauthtoken ${token}`, 'Accept': 'application/vnd.manageengine.sdp.v3+json' }
+    });
+    const data = await res.json();
+    if (!data.requests) throw new Error(`API error: ${JSON.stringify(data).substring(0,200)}`);
+    return { tickets: data.requests, hasMore: data.list_info?.has_more_rows || false };
+  }
+
+  // ===== FETCH DETALLE INDIVIDUAL =====
+  async fetchDetail(token, id) {
     try {
-      console.log("📥 Obteniendo tickets del API de Service Desk Plus Cloud...");
-      
+      const res = await fetch(`${this.apiBase}/requests/${id}`, {
+        headers: { 'Authorization': `Zoho-oauthtoken ${token}`, 'Accept': 'application/vnd.manageengine.sdp.v3+json' }
+      });
+      const data = await res.json();
+      return data.request || null;
+    } catch { return null; }
+  }
+
+  // ===== ENRIQUECER EN PARALELO =====
+  async enrichParallel(tickets, token, progressOffset = 0) {
+    const results = [];
+    for (let i = 0; i < tickets.length; i += CONCURRENCY) {
+      const batch = tickets.slice(i, i + CONCURRENCY);
+      const enriched = await Promise.all(batch.map(t => this.fetchDetail(token, t.id)));
+      enriched.forEach((detail, idx) => results.push(detail || batch[idx]));
+      this.syncProgress.current = progressOffset + i + batch.length;
+      this.syncProgress.pct = Math.round(this.syncProgress.current / this.syncProgress.total * 100);
+      if (i % 200 === 0) console.log(`   🔄 ${this.syncProgress.current}/${this.syncProgress.total} (${this.syncProgress.pct}%)`);
+      await new Promise(r => setTimeout(r, 30));
+    }
+    return results;
+  }
+
+  // ===== SYNC DE UN AÑO =====
+  async syncYear(year) {
+    if (this.syncProgress.status === 'running')
+      throw new Error(`Ya hay un sync en progreso (${this.syncProgress.year})`);
+
+    const fromTime = new Date(`${year}-01-01T00:00:00Z`).getTime();
+    const toTime = new Date(`${year}-12-31T23:59:59Z`).getTime();
+
+    this.syncProgress = { status: 'running', year, total: 0, current: 0, phase: `Obteniendo lista ${year}...`, pct: 0, startTime: Date.now() };
+
+    try {
       const token = await this.getValidToken();
-      
-      // 1️⃣ Primero: Obtén lista de IDs
-      const inputData = JSON.stringify({
-        "list_info": {
-          "start_index": 1,
-          "row_count": 100,
-          "sort_field": "created_time",
-          "sort_order": "desc"
-        }
-      });
 
-      const listUrl = `${this.apiBase}/requests?input_data=${encodeURIComponent(inputData)}`;
-      
-      console.log(`📡 GET /requests (lista)`);
+      // FASE 1: Lista paginada
+      console.log(`\n📋 SYNC ${year} - Fase 1: Lista paginada...`);
+      const allRaw = [];
+      let startIndex = 1, hasMore = true, page = 1;
 
-      const listResponse = await fetch(listUrl, {
-        method: "GET",
-        headers: {
-          "Authorization": `Zoho-oauthtoken ${token}`,
-          "Accept": "application/vnd.manageengine.sdp.v3+json"
-        }
-      });
-
-      let listData = await listResponse.json();
-
-      if (!listData.requests || listData.requests.length === 0) {
-        console.log("⚠️ No hay tickets");
-        return [];
+      while (hasMore) {
+        const result = await this.fetchPage(token, startIndex, fromTime, toTime);
+        allRaw.push(...result.tickets);
+        hasMore = result.hasMore;
+        startIndex += 100;
+        this.syncProgress.phase = `Fase 1: ${allRaw.length} tickets obtenidos (página ${page})...`;
+        console.log(`   📄 Página ${page}: ${allRaw.length} acumulados`);
+        page++;
+        if (page > 300) break;
+        await new Promise(r => setTimeout(r, 80));
       }
 
-      console.log(`✅ ${listData.requests.length} tickets obtenidos de lista`);
+      console.log(`✅ Lista ${year}: ${allRaw.length} tickets`);
+      this.syncProgress.total = allRaw.length;
+      this.syncProgress.phase = `Fase 2: Enriqueciendo ${allRaw.length} tickets con UDF...`;
 
-      // 2️⃣ Ahora: Consulta CADA uno individualmente para obtener udf_fields
-      console.log(`📥 Obteniendo detalles completos de cada ticket (con udf_fields)...`);
-      
-      const fullTickets = [];
-      
-      for (const ticket of listData.requests) {
-        try {
-          const detailUrl = `${this.apiBase}/requests/${ticket.id}`;
-          
-          const detailResponse = await fetch(detailUrl, {
-            method: "GET",
-            headers: {
-              "Authorization": `Zoho-oauthtoken ${token}`,
-              "Accept": "application/vnd.manageengine.sdp.v3+json"
-            }
-          });
+      // FASE 2: Enriquecer con udf_fields
+      console.log(`\n🔍 SYNC ${year} - Fase 2: Enriqueciendo con UDF...`);
+      const enriched = await this.enrichParallel(allRaw, token);
 
-          const detailData = await detailResponse.json();
-          
-          if (detailData.request) {
-            fullTickets.push(detailData.request);
-          }
-        } catch (error) {
-          console.warn(`⚠️ Error obteniendo detalles de ticket ${ticket.id}:`, error.message);
-          // Continuar con el siguiente ticket
-        }
-      }
+      // FASE 3: Mapear y guardar
+      console.log(`\n🗺️  SYNC ${year} - Fase 3: Mapeando...`);
+      this.syncProgress.phase = 'Fase 3: Mapeando...';
+      this.cache[year] = enriched.map(t => this.mapTicket(t));
+      this.cacheInfo[year] = { total: this.cache[year].length, syncedAt: new Date().toISOString(), complete: true };
+      this.saveYearCache(year, true);
 
-      console.log(`✅ ${fullTickets.length} tickets con detalles completos obtenidos`);
-      return fullTickets;
-    } catch (error) {
-      console.error("❌ Error obteniendo tickets:", error.message);
-      throw error;
+      const elapsed = Math.round((Date.now() - this.syncProgress.startTime) / 1000);
+      console.log(`\n✅ SYNC ${year} COMPLETO: ${this.cache[year].length} tickets en ${elapsed}s`);
+      this.syncProgress = { status: 'done', year, total: this.cache[year].length, current: this.cache[year].length, phase: `✅ ${year} completado en ${elapsed}s`, pct: 100 };
+
+      return this.cache[year];
+    } catch (e) {
+      this.syncProgress.status = 'error';
+      this.syncProgress.phase = `Error: ${e.message}`;
+      throw e;
     }
   }
 
-  /**
-   * Mapea un ticket individual extrayendo TODOS los campos importantes
-   * Según estructura de Postman Collection
-   */
-  mapTicket(rawTicket) {
-    return {
-      // Identificadores
-      id: rawTicket.id,
-      displayId: rawTicket.display_id,
-      
-      // Información básica
-      subject: rawTicket.subject,
-      description: rawTicket.description,
-      
-      // Estado y flujo
-      status: rawTicket.status?.name || rawTicket.status,
-      priority: rawTicket.priority?.name || rawTicket.priority,
-      urgency: rawTicket.urgency?.name || rawTicket.urgency,
-      impact: rawTicket.impact?.name || rawTicket.impact,
-      
-      // Categorización
-      category: rawTicket.category?.name || rawTicket.category,
-      subcategory: rawTicket.subcategory?.name || rawTicket.subcategory,
-      serviceCategory: rawTicket.service_category?.name || rawTicket.service_category,
-      
-      // Personas involucradas
-      requestor: rawTicket.requester?.name || null,
-      requestorId: rawTicket.requester?.id || null,
-      requestorEmail: rawTicket.requester?.email_id || null,
-      requestorPhone: rawTicket.requester?.phone || null,
-      requestorMobile: rawTicket.requester?.mobile || null,
-      
-      assignedTo: rawTicket.technician?.name || null,
-      assignedToId: rawTicket.technician?.id || null,
-      assignedToEmail: rawTicket.technician?.email_id || null,
-      assignedToCostPerHour: rawTicket.technician?.cost_per_hour || null,
-      
-      createdBy: rawTicket.created_by?.name || null,
-      createdById: rawTicket.created_by?.id || null,
-      
-      // Tiempos
-      createdTime: rawTicket.created_time?.value || rawTicket.created_time,
-      lastModifiedTime: rawTicket.last_updated_time?.value || rawTicket.last_updated_time,
-      dueDate: rawTicket.due_by_time?.value || rawTicket.due_by_time,
-      firstResponseDueBy: rawTicket.first_response_due_by_time?.value || null,
-      resolvedTime: rawTicket.resolved_time?.value || rawTicket.resolved_time,
-      respondedTime: rawTicket.responded_time?.value || rawTicket.responded_time,
-      completedTime: rawTicket.completed_time?.value || rawTicket.completed_time,
-      
-      // Estados y banderas
-      overdue: rawTicket.is_overdue || false,
-      isFirstResponseOverdue: rawTicket.is_first_response_overdue || false,
-      isEscalated: rawTicket.is_escalated || false,
-      isReopened: rawTicket.is_reopened || false,
-      isFCR: rawTicket.is_fcr || false,
-      isServiceRequest: rawTicket.is_service_request || false,
-      isTrash: rawTicket.is_trashed || false,
-      
-      // Organización
-      group: rawTicket.group?.name || null,
-      groupId: rawTicket.group?.id || null,
-      department: rawTicket.department?.name || null,
-      departmentId: rawTicket.department?.id || null,
-      site: rawTicket.site?.name || null,
-      siteId: rawTicket.site?.id || null,
-      
-      // SLA y nivel de servicio
-      sla: rawTicket.sla?.name || null,
-      slaId: rawTicket.sla?.id || null,
-      level: rawTicket.level?.name || null,
-      levelId: rawTicket.level?.id || null,
-      
-      // Resolución
-      resolution: rawTicket.resolution?.content || null,
-      
-      // Modo y fuente
-      mode: rawTicket.mode?.name || null,
-      
-      // Recursos y relaciones
-      assets: rawTicket.assets?.map(a => ({ name: a.name, id: a.id, barcode: a.barcode })) || [],
-      configurationItems: rawTicket.configuration_items?.map(c => ({ name: c.name, id: c.id })) || [],
-      
-      // Información adicional
-      requestType: rawTicket.request_type?.name || null,
-      requestTypeId: rawTicket.request_type?.id || null,
-      template: rawTicket.template?.name || null,
-      templateId: rawTicket.template?.id || null,
-      totalCost: rawTicket.total_cost || null,
-      serviceCost: rawTicket.service_cost || null,
-      timeElapsed: rawTicket.time_elapsed || null,
-      unrepliedCount: rawTicket.unreplied_count || 0,
-      
-      // Contactos
-      emailTo: rawTicket.email_to || [],
-      emailCC: rawTicket.email_cc || [],
-      emailBCC: rawTicket.email_bcc || [],
-      
-      // Metadatos
-      hasAttachments: rawTicket.has_attachments || false,
-      hasNotes: rawTicket.has_notes || false,
-      hasProblem: rawTicket.has_problem || false,
-      hasProject: rawTicket.has_project || false,
-      hasLinkedRequests: rawTicket.has_linked_requests || false,
-      hasChangeInitiatedRequest: rawTicket.has_change_initiated_request || false,
-      hasRequestInitiatedChange: rawTicket.has_request_initiated_change || false,
-      hasDraft: rawTicket.has_draft || false,
-      hasPurchaseOrders: rawTicket.has_purchase_orders || false,
+  // ===== SYNC INICIAL (año actual) =====
+  async initialSync() {
+    const year = new Date().getFullYear();
+    if (this.cache[year]?.length > 0 && this.cacheInfo[year]?.complete) {
+      console.log(`✅ Caché ${year} listo: ${this.cache[year].length} tickets`);
+      return this.cache[year];
+    }
+    console.log(`📥 Sync inicial año ${year}...`);
+    return await this.syncYear(year);
+  }
 
-      // ============ CAMPOS PERSONALIZADOS (udf_fields) - MAPEO OFICIAL KASHIO ============
-      // Extraer de udf_fields según la tabla oficial de campos de la ticketera
-      
-      // Información de la empresa
-      empresa: rawTicket.udf_fields?.udf_char2 || null,                    // Clientes de Kashio
-      tipoEmpresa: rawTicket.udf_fields?.udf_char6 || null,               // Tipo de Empresa
-      
-      // Información de contacto
-      emailIdCustom: rawTicket.udf_fields?.udf_char1 || null,             // Email id
-      
-      // Clasificación y módulos
-      modulo: rawTicket.udf_fields?.udf_char5 || null,                    // Módulo
-      erp: rawTicket.udf_fields?.udf_char10 || null,                      // ERP (Administradora)
-      region: rawTicket.udf_fields?.udf_char15 || null,                   // Región
-      
-      // Motivos y estados
-      motivoPendiente: rawTicket.udf_fields?.udf_char3 || null,           // Motivo de Pendiente
-      motivoCancelacion: rawTicket.udf_fields?.udf_char4 || null,         // Motivo de Cancelación
-      
-      // Flags de negocio y horario
-      afectaNegocio: rawTicket.udf_fields?.udf_char7 || null,             // Afecta a Negocio
-      dentroHorarioOficina: rawTicket.udf_fields?.udf_char8 || null,      // Dentro de Horario de Oficina
-      horarioMadrugada: rawTicket.udf_fields?.udf_char9 || null,          // Horario de madrugada
-      
-      // Clasificación corporativa
-      corporativo: rawTicket.udf_fields?.udf_char11 || null,              // Corporativo
-      solicitante: rawTicket.udf_fields?.udf_char12 || null,              // Solicitante
-      informativo: rawTicket.udf_fields?.udf_char13 || null,              // Informativo
-      
-      // Fechas y textos adicionales
-      fechaComprometida: rawTicket.udf_fields?.udf_date1?.value || null,  // Fecha comprometida
-      jiraGenerado: rawTicket.udf_fields?.txt_jira_generado || null,      // Jira Generado
-      comentarios: rawTicket.udf_fields?.txt_comentarios || null,         // Comentarios
-      solicitudAsociada: rawTicket.udf_fields?.txt_solicitud_asociada || null, // Solicitud asociada
+  // ===== SYNC INCREMENTAL (nuevos/modificados) =====
+  async incrementalSync() {
+    try {
+      console.log('\n🔄 Sync incremental...');
+      const token = await this.getValidToken();
+      const year = new Date().getFullYear();
+      const { tickets } = await this.fetchPage(token, 1, null, null);
+      const existing = new Map((this.cache[year] || []).map(t => [t.id, t]));
+      const toEnrich = tickets.filter(t => {
+        const cached = existing.get(t.id);
+        return !cached || (t.last_updated_time?.value && +t.last_updated_time.value > +(cached.lastModifiedTime || 0));
+      });
+      if (!toEnrich.length) { console.log('✅ Sin cambios'); return; }
+      console.log(`🔄 ${toEnrich.length} tickets nuevos/modificados`);
+      const enriched = await this.enrichParallel(toEnrich, token);
+      enriched.forEach(raw => {
+        const mapped = this.mapTicket(raw);
+        if (!this.cache[year]) this.cache[year] = [];
+        const idx = this.cache[year].findIndex(t => t.id === mapped.id);
+        if (idx >= 0) this.cache[year][idx] = mapped;
+        else this.cache[year].unshift(mapped);
+      });
+      this.cacheInfo[year] = { ...this.cacheInfo[year], syncedAt: new Date().toISOString() };
+      this.saveYearCache(year, this.cacheInfo[year]?.complete || false);
+      console.log(`✅ Incremental: ${this.cache[year].length} tickets en caché ${year}`);
+    } catch (e) { console.error('❌ Error incremental:', e.message); }
+  }
+
+  // ===== MAPEADOR =====
+  mapTicket(r) {
+    return {
+      id: r.id, displayId: r.display_id, subject: r.subject, description: r.description,
+      status: r.status?.name || r.status, priority: r.priority?.name || r.priority,
+      urgency: r.urgency?.name || r.urgency, impact: r.impact?.name || r.impact,
+      category: r.category?.name || r.category, subcategory: r.subcategory?.name || r.subcategory,
+      serviceCategory: r.service_category?.name || r.service_category,
+      requestor: r.requester?.name || null, requestorId: r.requester?.id || null,
+      requestorEmail: r.requester?.email_id || null, requestorPhone: r.requester?.phone || null,
+      assignedTo: r.technician?.name || null, assignedToId: r.technician?.id || null,
+      assignedToEmail: r.technician?.email_id || null,
+      createdBy: r.created_by?.name || null,
+      createdTime: r.created_time?.value || r.created_time,
+      lastModifiedTime: r.last_updated_time?.value || r.last_updated_time,
+      dueDate: r.due_by_time?.value || r.due_by_time,
+      firstResponseDueBy: r.first_response_due_by_time?.value || null,
+      resolvedTime: r.resolved_time?.value || r.resolved_time,
+      respondedTime: r.responded_time?.value || r.responded_time,
+      completedTime: r.completed_time?.value || r.completed_time,
+      overdue: r.is_overdue || false, isFirstResponseOverdue: r.is_first_response_overdue || false,
+      isEscalated: r.is_escalated || false, isReopened: r.is_reopened || false,
+      isFCR: r.is_fcr || false, isServiceRequest: r.is_service_request || false,
+      group: r.group?.name || null, groupId: r.group?.id || null,
+      department: r.department?.name || null, site: r.site?.name || null,
+      sla: r.sla?.name || null, slaId: r.sla?.id || null,
+      level: r.level?.name || null,
+      resolution: r.resolution?.content || null, mode: r.mode?.name || null,
+      requestType: r.request_type?.name || null, template: r.template?.name || null,
+      totalCost: r.total_cost || null, serviceCost: r.service_cost || null,
+      timeElapsed: r.time_elapsed || null, unrepliedCount: r.unreplied_count || 0,
+      emailTo: r.email_to || [], emailCC: r.email_cc || [], emailBCC: r.email_bcc || [],
+      hasAttachments: r.has_attachments || false, hasNotes: r.has_notes || false,
+      hasProblem: r.has_problem || false, hasProject: r.has_project || false,
+      hasLinkedRequests: r.has_linked_requests || false, hasDraft: r.has_draft || false,
+      hasPurchaseOrders: r.has_purchase_orders || false,
+      empresa: r.udf_fields?.udf_char2 || null,
+      tipoEmpresa: r.udf_fields?.udf_char6 || null,
+      emailIdCustom: r.udf_fields?.udf_char1 || null,
+      modulo: r.udf_fields?.udf_char5 || null,
+      erp: r.udf_fields?.udf_char10 || null,
+      region: r.udf_fields?.udf_char15 || null,
+      motivoPendiente: r.udf_fields?.udf_char3 || null,
+      motivoCancelacion: r.udf_fields?.udf_char4 || null,
+      afectaNegocio: r.udf_fields?.udf_char7 || null,
+      dentroHorarioOficina: r.udf_fields?.udf_char8 || null,
+      horarioMadrugada: r.udf_fields?.udf_char9 || null,
+      corporativo: r.udf_fields?.udf_char11 || null,
+      solicitante: r.udf_fields?.udf_char12 || null,
+      informativo: r.udf_fields?.udf_char13 || null,
+      fechaComprometida: r.udf_fields?.udf_date1?.value || null,
+      jiraGenerado: r.udf_fields?.txt_jira_generado || null,
+      comentarios: r.udf_fields?.txt_comentarios || null,
+      solicitudAsociada: r.udf_fields?.txt_solicitud_asociada || null
     };
   }
 
-  /**
-   * Mapea todos los tickets
-   */
-  async mapAllTickets() {
-    try {
-      const rawTickets = await this.fetchAllTickets();
-      this.mappedData.tickets = rawTickets.map(ticket => this.mapTicket(ticket));
-      this.mappedData.lastUpdate = new Date();
-      
-      console.log(`✅ ${this.mappedData.tickets.length} tickets mapeados\n`);
-      return this.mappedData.tickets;
-    } catch (error) {
-      console.error("❌ Error mapeando tickets:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Genera resumen
-   */
   generateSummary() {
-    const tickets = this.mappedData.tickets;
-    
-    if (tickets.length === 0) {
-      return { error: "No hay tickets" };
-    }
-
+    const tickets = this.getAllTickets();
     return {
-      totalTickets: tickets.length,
-      byStatus: this.groupBy(tickets, "status"),
-      byPriority: this.groupBy(tickets, "priority"),
+      totalTickets: tickets.length, yearsLoaded: Object.keys(this.cache).map(Number),
+      byStatus: this.groupBy(tickets, 'status'), byPriority: this.groupBy(tickets, 'priority'),
       overdueCount: tickets.filter(t => t.overdue).length
     };
   }
 
-  /**
-   * Agrupa elementos
-   */
   groupBy(arr, key) {
-    return arr.reduce((acc, obj) => {
-      const group = obj[key] || "Sin clasificar";
-      acc[group] = (acc[group] || 0) + 1;
-      return acc;
-    }, {});
+    return arr.reduce((a, o) => { const g = o[key] || 'Sin clasificar'; a[g] = (a[g] || 0) + 1; return a; }, {});
   }
 
-  /**
-   * Sincronización automática
-   */
-  startAutoSync(intervalMinutes = 15) {
-    console.log(`🔄 Sincronización automática cada ${intervalMinutes} minutos\n`);
-    
-    setInterval(async () => {
-      try {
-        console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Sincronización automática...`);
-        await this.mapAllTickets();
-        this.generateSummary();
-        console.log(`✅ Sincronización completada`);
-      } catch (error) {
-        console.error("❌ Error:", error.message);
-      }
-    }, intervalMinutes * 60 * 1000);
-  }
-
-  /**
-   * Exporta datos
-   */
   exportForAnalysis() {
     return {
-      metadata: {
-        exportTime: new Date().toISOString(),
-        totalTickets: this.mappedData.tickets.length
-      },
-      tickets: this.mappedData.tickets,
-      summary: this.mappedData.summary
-    };
-  }
-
-  /**
-   * Obtiene tickets para análisis
-   */
-  getTicketsForAIAnalysis() {
-    return {
-      count: this.mappedData.tickets.length,
-      tickets: this.mappedData.tickets.map(t => ({
-        id: t.id,
-        summary: `[${t.priority}] ${t.subject}`,
-        description: t.description,
-        context: {
-          status: t.status,
-          assignedTo: t.assignedTo,
-          overdue: t.overdue
-        }
-      }))
+      metadata: { exportTime: new Date().toISOString(), totalTickets: this.getAllTickets().length, yearsAvailable: this.getYearsAvailable() },
+      tickets: this.getAllTickets(),
+      summary: this.generateSummary()
     };
   }
 }
 
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = SDPDataMapper;
-}
+if (typeof module !== 'undefined' && module.exports) module.exports = SDPDataMapper;
